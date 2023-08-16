@@ -5,20 +5,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/fatedier/frp/pkg/api"
-	"io"
-	"net"
-	"net/http"
-	"regexp"
-	"sort"
-	"strconv"
-	"time"
-
-	"github.com/fatedier/golib/net/mux"
-	fmux "github.com/hashicorp/yamux"
-	"github.com/quic-go/quic-go"
-
 	"github.com/fatedier/frp/assets"
+	api "github.com/fatedier/frp/pkg/api"
 	"github.com/fatedier/frp/pkg/auth"
 	"github.com/fatedier/frp/pkg/config"
 	modelmetrics "github.com/fatedier/frp/pkg/metrics"
@@ -39,6 +27,16 @@ import (
 	"github.com/fatedier/frp/server/ports"
 	"github.com/fatedier/frp/server/proxy"
 	"github.com/fatedier/frp/server/visitor"
+	"github.com/fatedier/golib/net/mux"
+	fmux "github.com/hashicorp/yamux"
+	quic "github.com/quic-go/quic-go"
+	"io"
+	"net"
+	"net/http"
+	"regexp"
+	"sort"
+	"strconv"
+	"time"
 )
 
 const (

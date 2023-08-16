@@ -3,21 +3,11 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/fatedier/frp/pkg/api"
-	"github.com/fatedier/frp/pkg/limit"
-	"io"
-	"net"
-	"runtime/debug"
-	"sync"
-	"time"
-
-	"github.com/fatedier/golib/control/shutdown"
-	"github.com/fatedier/golib/crypto"
-	"github.com/fatedier/golib/errors"
-
+	api "github.com/fatedier/frp/pkg/api"
 	"github.com/fatedier/frp/pkg/auth"
 	"github.com/fatedier/frp/pkg/config"
 	pkgerr "github.com/fatedier/frp/pkg/errors"
+	"github.com/fatedier/frp/pkg/limit"
 	"github.com/fatedier/frp/pkg/msg"
 	plugin "github.com/fatedier/frp/pkg/plugin/server"
 	"github.com/fatedier/frp/pkg/transport"
@@ -27,6 +17,14 @@ import (
 	"github.com/fatedier/frp/server/controller"
 	"github.com/fatedier/frp/server/metrics"
 	"github.com/fatedier/frp/server/proxy"
+	"github.com/fatedier/golib/control/shutdown"
+	"github.com/fatedier/golib/crypto"
+	"github.com/fatedier/golib/errors"
+	"io"
+	"net"
+	"runtime/debug"
+	"sync"
+	"time"
 )
 
 type ControlManager struct {
@@ -686,6 +684,5 @@ func (ctl *Control) CloseProxy(closeMsg *msg.CloseProxy) (err error) {
 	go func() {
 		_ = ctl.pluginManager.CloseProxy(notifyContent)
 	}()
-
 	return
 }

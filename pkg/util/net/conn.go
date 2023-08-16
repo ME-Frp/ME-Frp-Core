@@ -3,13 +3,12 @@ package net
 import (
 	"context"
 	"errors"
-	"github.com/quic-go/quic-go"
+	"github.com/fatedier/frp/pkg/util/xlog"
+	quic "github.com/quic-go/quic-go"
 	"io"
 	"net"
 	"sync/atomic"
 	"time"
-
-	"github.com/fatedier/frp/pkg/util/xlog"
 )
 
 type ContextGetter interface {

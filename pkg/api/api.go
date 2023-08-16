@@ -66,7 +66,7 @@ func (s Service) CheckToken(user string, token string, timestamp int64, stk stri
 }
 
 // CheckProxy 校验客户端代理
-func (s Service) CheckProxy(user string, pMsg *msg.NewProxy, timestamp int64, stk string, LoginMsg *msg.Login) (ok bool, err error) {
+func (s Service) CheckProxy(user string, pMsg *msg.NewProxy, timestamp int64, stk string, loginMsg *msg.Login) (ok bool, err error) {
 
 	domains, err := json.Marshal(pMsg.CustomDomains)
 	if err != nil {
@@ -86,20 +86,21 @@ func (s Service) CheckProxy(user string, pMsg *msg.NewProxy, timestamp int64, st
 	values.Set("proxy_type", pMsg.ProxyType)
 
 	// Proxies login info
-	values.Set("run_id", LoginMsg.RunID)
+	values.Set("run_id", loginMsg.RunID)
 
 	// Load balance
 	values.Set("group", pMsg.Group)
 	values.Set("group_key", pMsg.GroupKey)
 
-	if pMsg.ProxyType == "http" || pMsg.ProxyType == "https" {
-		// Http Proxies
+	switch pMsg.ProxyType {
+	case "http", "https":
+		// Http代理
 		values.Set("domain", string(domains))
-	} else if pMsg.ProxyType == "tcp" || pMsg.ProxyType == "udp" {
-		// Tcp & Udp
+	case "tcp", "udp":
+		// Tcp和Udp
 		values.Set("remote_port", strconv.Itoa(pMsg.RemotePort))
-	} else if pMsg.ProxyType == "stcp" || pMsg.ProxyType == "xtcp" {
-		// Stcp & Xtcp
+	case "stcp", "xtcp":
+		// Stcp和Xtcp
 		values.Set("remote_port", strconv.Itoa(pMsg.RemotePort))
 		values.Set("sk", pMsg.Sk)
 	}
