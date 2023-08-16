@@ -1,34 +1,23 @@
-// Copyright 2016 fatedier, fatedier@gmail.com
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package net
 
 import (
 	"context"
 	"errors"
+	"github.com/quic-go/quic-go"
 	"io"
 	"net"
 	"sync/atomic"
 	"time"
-
-	quic "github.com/quic-go/quic-go"
 
 	"github.com/fatedier/frp/pkg/util/xlog"
 )
 
 type ContextGetter interface {
 	Context() context.Context
+}
+
+type Conn interface {
+	net.Conn
 }
 
 type ContextSetter interface {
@@ -122,13 +111,13 @@ func (conn *WrapReadWriteCloserConn) SetWriteDeadline(t time.Time) error {
 type CloseNotifyConn struct {
 	net.Conn
 
-	// 1 means closed
+	// 1 mean closed
 	closeFlag int32
 
 	closeFn func()
 }
 
-// closeFn will be only called once
+// WrapCloseNotifyConn closeFn will be only called once
 func WrapCloseNotifyConn(c net.Conn, closeFn func()) net.Conn {
 	return &CloseNotifyConn{
 		Conn:    c,
@@ -150,7 +139,7 @@ func (cc *CloseNotifyConn) Close() (err error) {
 type StatsConn struct {
 	net.Conn
 
-	closed     int64 // 1 means closed
+	closed     int64 // 1 mean closed
 	totalRead  int64
 	totalWrite int64
 	statsFunc  func(totalRead, totalWrite int64)

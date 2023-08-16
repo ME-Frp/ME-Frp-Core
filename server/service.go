@@ -1,17 +1,3 @@
-// Copyright 2017 fatedier, fatedier@gmail.com
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package server
 
 import (
@@ -19,16 +5,18 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/fatedier/frp/pkg/api"
 	"io"
 	"net"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"time"
 
 	"github.com/fatedier/golib/net/mux"
 	fmux "github.com/hashicorp/yamux"
-	quic "github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go"
 
 	"github.com/fatedier/frp/assets"
 	"github.com/fatedier/frp/pkg/auth"
@@ -54,11 +42,11 @@ import (
 )
 
 const (
-	connReadTimeout       time.Duration = 10 * time.Second
-	vhostReadWriteTimeout time.Duration = 30 * time.Second
+	connReadTimeout       = 10 * time.Second
+	vhostReadWriteTimeout = 30 * time.Second
 )
 
-// Server service
+// Service Server service
 type Service struct {
 	// Dispatch connections to different handlers listen on same port
 	muxer *mux.Mux
@@ -146,7 +134,7 @@ func NewService(cfg config.ServerCommonConf) (svr *Service, err error) {
 			err = fmt.Errorf("create vhost tcpMuxer error, %v", err)
 			return
 		}
-		log.Info("tcpmux httpconnect multiplexer listen on %s, passthough: %v", address, cfg.TCPMuxPassthrough)
+		log.Info("tcpmux httpconnect multiplexer listen on %s, pass though: %v", address, cfg.TCPMuxPassthrough)
 	}
 
 	// Init all plugins
@@ -349,32 +337,53 @@ func (svr *Service) Run(ctx context.Context) {
 	<-svr.ctx.Done()
 	// service context may not be canceled by svr.Close(), we should call it here to release resources
 	if svr.listener != nil {
-		svr.Close()
+		err := svr.Close()
+		if err != nil {
+			return
+		}
 	}
 }
 
 func (svr *Service) Close() error {
 	if svr.kcpListener != nil {
-		svr.kcpListener.Close()
+		err := svr.kcpListener.Close()
+		if err != nil {
+			return err
+		}
 		svr.kcpListener = nil
 	}
 	if svr.quicListener != nil {
-		svr.quicListener.Close()
+		err := svr.quicListener.Close()
+		if err != nil {
+			return err
+		}
 		svr.quicListener = nil
 	}
 	if svr.websocketListener != nil {
-		svr.websocketListener.Close()
+		err := svr.websocketListener.Close()
+		if err != nil {
+			return err
+		}
 		svr.websocketListener = nil
 	}
 	if svr.tlsListener != nil {
-		svr.tlsListener.Close()
+		err := svr.tlsListener.Close()
+		if err != nil {
+			return err
+		}
 		svr.tlsConfig = nil
 	}
 	if svr.listener != nil {
-		svr.listener.Close()
+		err := svr.listener.Close()
+		if err != nil {
+			return err
+		}
 		svr.listener = nil
 	}
-	svr.ctlManager.Close()
+	err := svr.ctlManager.Close()
+	if err != nil {
+		return err
+	}
 	if svr.cancel != nil {
 		svr.cancel()
 	}
@@ -392,7 +401,10 @@ func (svr *Service) handleConnection(ctx context.Context, conn net.Conn) {
 	_ = conn.SetReadDeadline(time.Now().Add(connReadTimeout))
 	if rawMsg, err = msg.ReadMsg(conn); err != nil {
 		log.Trace("Failed to read message: %v", err)
-		conn.Close()
+		err := conn.Close()
+		if err != nil {
+			return
+		}
 		return
 	}
 	_ = conn.SetReadDeadline(time.Time{})
@@ -411,18 +423,24 @@ func (svr *Service) handleConnection(ctx context.Context, conn net.Conn) {
 		}
 
 		// If login failed, send error message there.
-		// Otherwise send success message in control's work goroutine.
+		// Otherwise, send success message in control's work goroutine.
 		if err != nil {
 			xl.Warn("register control error: %v", err)
 			_ = msg.WriteMsg(conn, &msg.LoginResp{
 				Version: version.Full(),
 				Error:   util.GenerateResponseErrorString("register control error", err, svr.cfg.DetailedErrorsToClient),
 			})
-			conn.Close()
+			err := conn.Close()
+			if err != nil {
+				return
+			}
 		}
 	case *msg.NewWorkConn:
 		if err := svr.RegisterWorkConn(conn, m); err != nil {
-			conn.Close()
+			err := conn.Close()
+			if err != nil {
+				return
+			}
 		}
 	case *msg.NewVisitorConn:
 		if err = svr.RegisterVisitorConn(conn, m); err != nil {
@@ -431,7 +449,10 @@ func (svr *Service) handleConnection(ctx context.Context, conn net.Conn) {
 				ProxyName: m.ProxyName,
 				Error:     util.GenerateResponseErrorString("register visitor conn error", err, svr.cfg.DetailedErrorsToClient),
 			})
-			conn.Close()
+			err := conn.Close()
+			if err != nil {
+				return
+			}
 		} else {
 			_ = msg.WriteMsg(conn, &msg.NewVisitorConnResp{
 				ProxyName: m.ProxyName,
@@ -440,7 +461,10 @@ func (svr *Service) handleConnection(ctx context.Context, conn net.Conn) {
 		}
 	default:
 		log.Warn("Error message type for the new connection [%s]", conn.RemoteAddr().String())
-		conn.Close()
+		err := conn.Close()
+		if err != nil {
+			return
+		}
 	}
 }
 
@@ -452,7 +476,7 @@ func (svr *Service) HandleListener(l net.Listener) {
 			log.Warn("Listener for incoming connections from client closed")
 			return
 		}
-		// inject xlog object into net.Conn context
+		// inject log object into net.Conn context
 		xl := xlog.New()
 		ctx := context.Background()
 
@@ -464,7 +488,10 @@ func (svr *Service) HandleListener(l net.Listener) {
 		c, isTLS, custom, err = utilnet.CheckAndEnableTLSServerConnWithTimeout(c, svr.tlsConfig, svr.cfg.TLSOnly, connReadTimeout)
 		if err != nil {
 			log.Warn("CheckAndEnableTLSServerConnWithTimeout error: %v", err)
-			originConn.Close()
+			err := originConn.Close()
+			if err != nil {
+				return
+			}
 			continue
 		}
 		log.Trace("check TLS connection success, isTLS: %v custom: %v", isTLS, custom)
@@ -479,7 +506,10 @@ func (svr *Service) HandleListener(l net.Listener) {
 				session, err := fmux.Server(frpConn, fmuxCfg)
 				if err != nil {
 					log.Warn("Failed to create mux connection: %v", err)
-					frpConn.Close()
+					err := frpConn.Close()
+					if err != nil {
+						return
+					}
 					return
 				}
 
@@ -487,7 +517,10 @@ func (svr *Service) HandleListener(l net.Listener) {
 					stream, err := session.AcceptStream()
 					if err != nil {
 						log.Debug("Accept new mux stream error: %v", err)
-						session.Close()
+						err := session.Close()
+						if err != nil {
+							return
+						}
 						return
 					}
 					go svr.handleConnection(ctx, stream)
@@ -526,10 +559,11 @@ func (svr *Service) RegisterControl(ctlConn net.Conn, loginMsg *msg.Login) (err 
 	// If client's RunID is empty, it's a new client, we just create a new controller.
 	// Otherwise, we check if there is one controller has the same run id. If so, we release previous controller and start new one.
 	if loginMsg.RunID == "" {
-		loginMsg.RunID, err = util.RandID()
+		rand, err := util.RandID()
 		if err != nil {
-			return
+			return err
 		}
+		loginMsg.RunID = loginMsg.User + "-" + rand
 	}
 
 	ctx := utilnet.NewContextFromConn(ctlConn)
@@ -540,8 +574,8 @@ func (svr *Service) RegisterControl(ctlConn net.Conn, loginMsg *msg.Login) (err 
 		ctlConn.RemoteAddr().String(), loginMsg.Version, loginMsg.Hostname, loginMsg.Os, loginMsg.Arch)
 
 	// Check client version.
-	if ok, msg := version.Compat(loginMsg.Version); !ok {
-		err = fmt.Errorf("%s", msg)
+	if ok, Vmsg := version.Compat(loginMsg.Version); !ok {
+		err = fmt.Errorf("%s", Vmsg)
 		return
 	}
 
@@ -550,7 +584,46 @@ func (svr *Service) RegisterControl(ctlConn net.Conn, loginMsg *msg.Login) (err 
 		return
 	}
 
-	ctl := NewControl(ctx, svr.rc, svr.pxyManager, svr.pluginManager, svr.authVerifier, ctlConn, loginMsg, svr.cfg)
+	var (
+		inLimit  uint64
+		outLimit uint64
+	)
+
+	if svr.cfg.EnableApi {
+
+		nowTime := time.Now().Unix()
+
+		s, err := api.NewService(svr.cfg.ApiBaseUrl)
+		if err != nil {
+			return err
+		}
+
+		r := regexp.MustCompile(`^[A-Za-z0-9]{1,64}$`)
+		mm := r.FindAllStringSubmatch(loginMsg.User, -1)
+
+		if len(mm) < 1 {
+			return fmt.Errorf("invalid username")
+		}
+
+		// Connect to API server and verify the user.
+		valid, err := s.CheckToken(loginMsg.User, loginMsg.PrivilegeKey, nowTime, svr.cfg.ApiToken)
+
+		if err != nil {
+			return err
+		}
+
+		if !valid {
+			return fmt.Errorf("authorization failed")
+		}
+
+		inLimit, outLimit, err = s.GetProxyLimit(loginMsg.User, nowTime, svr.cfg.ApiToken)
+		if err != nil {
+			return err
+		}
+		xl.Debug("%s client speed limit: %dKB/s (Inbound) / %dKB/s (Outbound)", loginMsg.User, inLimit, outLimit)
+	}
+
+	ctl := NewControl(ctx, svr.rc, svr.pxyManager, svr.pluginManager, svr.authVerifier, ctlConn, loginMsg, svr.cfg, inLimit, outLimit)
 	if oldCtl := svr.ctlManager.Add(loginMsg.RunID, ctl); oldCtl != nil {
 		oldCtl.WaitClosed()
 	}
@@ -613,4 +686,12 @@ func (svr *Service) RegisterVisitorConn(visitorConn net.Conn, newMsg *msg.NewVis
 	}
 	return svr.rc.VisitorManager.NewConn(newMsg.ProxyName, visitorConn, newMsg.Timestamp, newMsg.SignKey,
 		newMsg.UseEncryption, newMsg.UseCompression, visitorUser)
+}
+func (svr *Service) CloseUser(user string) error {
+	ctl, ok := svr.ctlManager.GetByID(user)
+	if !ok {
+		return fmt.Errorf("user not login")
+	}
+	ctl.allShutdown.Start()
+	return nil
 }

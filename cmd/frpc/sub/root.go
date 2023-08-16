@@ -1,28 +1,17 @@
-// Copyright 2018 fatedier, fatedier@gmail.com
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package sub
 
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -36,15 +25,14 @@ import (
 	"github.com/fatedier/frp/pkg/util/version"
 )
 
-const (
-	CfgFileTypeIni = iota
-	CfgFileTypeCmd
-)
-
 var (
-	cfgFile     string
-	cfgDir      string
-	showVersion bool
+	cfgFile       string
+	cfgDir        string
+	showVersion   bool
+	userToken     string
+	tunnelId      string
+	RemoteContent string
+	_             string
 
 	serverAddr      string
 	user            string
@@ -82,9 +70,11 @@ var (
 )
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "./frpc.ini", "config file of frpc")
+	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file of frpc")
 	rootCmd.PersistentFlags().StringVarP(&cfgDir, "config_dir", "", "", "config directory, run one frpc service for each file in config directory")
 	rootCmd.PersistentFlags().BoolVarP(&showVersion, "version", "v", false, "version of frpc")
+	rootCmd.PersistentFlags().StringVarP(&userToken, "token", "t", "", "You User Token")
+	rootCmd.PersistentFlags().StringVarP(&tunnelId, "tunnelId", "n", "", "Tunnel's ID")
 }
 
 func RegisterCommonFlags(cmd *cobra.Command) {
@@ -100,25 +90,78 @@ func RegisterCommonFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVarP(&tlsServerName, "tls_server_name", "", "", "specify the custom server name of tls certificate")
 	cmd.PersistentFlags().StringVarP(&dnsServer, "dns_server", "", "", "specify dns server instead of using system default one")
 }
+func EasyStartGetConf(token string, tunnelId string) {
+	req, err := http.NewRequest("GET", "https://frp.api.mcserverx.com/api/v2/tunnel/conf/id/"+tunnelId, nil)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	c := &http.Client{}
+
+	response, err := c.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	if response.StatusCode != http.StatusOK {
+		err = fmt.Errorf("ME Frp API 错误 可能是您的启动信息错误%d", response.StatusCode)
+		fmt.Println(err)
+		os.Exit(1)
+		return
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			fmt.Println(err)
+		}
+	}(response.Body)
+
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println("获取配置文件成功！ 启动隧道")
+	Content := string(data)
+	RemoteContent = Content
+	return
+}
 
 var rootCmd = &cobra.Command{
 	Use:   "frpc",
-	Short: "frpc is the client of frp (https://github.com/fatedier/frp)",
+	Short: "The Frp Client of ME Frp",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if showVersion {
 			fmt.Println(version.Full())
 			return nil
 		}
 
+		if cfgFile == "" && cfgDir == "" && (userToken == "" || tunnelId == "") {
+			fmt.Println("启动参数不存在或不完整！ 无法正常使用 EasyStartSingle/Multi 以及 LocalConfigSingle/Multi 启动,即将尝试通过 ./frpc.ini 文件启动。")
+			cfgFile = "./frpc.ini"
+		}
+
+		// 多隧道启动部分
+
 		// If cfgDir is not empty, run multiple frpc service for each config file in cfgDir.
 		// Note that it's only designed for testing. It's not guaranteed to be stable.
 		if cfgDir != "" {
+			// 使用配置文件夹启动
+			fmt.Println("使用配置文件夹启动")
 			_ = runMultipleClients(cfgDir)
 			return nil
 		}
+		// 如果 tunnelId 后面跟了多个数字，那么就是多个隧道
+		if strings.Contains(tunnelId, ",") {
+			fmt.Println("检测到多个隧道，正在启动多个隧道")
+			_ = runMultipleClientsEasyStart(userToken, tunnelId)
+		}
 
-		// Do not show command usage here.
-		err := runClient(cfgFile)
+		// 多隧道不行就单隧道
+		err := runClient(cfgFile, userToken, tunnelId)
 		if err != nil {
 			os.Exit(1)
 		}
@@ -136,7 +179,7 @@ func runMultipleClients(cfgDir string) error {
 		time.Sleep(time.Millisecond)
 		go func() {
 			defer wg.Done()
-			err := runClient(path)
+			err := runClient(path, "", "")
 			if err != nil {
 				fmt.Printf("frpc service error for config file [%s]\n", path)
 			}
@@ -147,6 +190,26 @@ func runMultipleClients(cfgDir string) error {
 	return err
 }
 
+func runMultipleClientsEasyStart(userToken string, tunnelId string) error {
+	var wg sync.WaitGroup
+
+	// 对于多个隧道，我们需要分割它们
+	tunnelIdList := strings.Split(tunnelId, ",")
+	for _, tunnelId := range tunnelIdList {
+		wg.Add(1)
+		time.Sleep(time.Millisecond)
+		go func() {
+			defer wg.Done()
+			err := runClient("", userToken, tunnelId)
+			if err != nil {
+				fmt.Printf("frpc service error for config file [%s]\n", tunnelId)
+			}
+		}()
+		return nil
+	}
+	wg.Wait()
+	return nil
+}
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -198,8 +261,19 @@ func parseClientCommonCfgFromCmd() (cfg config.ClientCommonConf, err error) {
 	return
 }
 
-func runClient(cfgFilePath string) error {
-	cfg, pxyCfgs, visitorCfgs, err := config.ParseClientConfig(cfgFilePath)
+func runClient(cfgFilePath string, userToken string, tunnelId string) error {
+	var content string
+	if cfgFilePath != "" {
+		LocalContent, err := config.GetRenderedConfFromFile(cfgFile)
+		if err != nil {
+			return err
+		}
+		content = string(LocalContent)
+	} else {
+		EasyStartGetConf(userToken, tunnelId)
+		content = RemoteContent
+	}
+	cfg, pxyCfgs, visitorCfgs, err := config.ParseClientConfig(content)
 	if err != nil {
 		fmt.Println(err)
 		return err

@@ -21,17 +21,15 @@ import (
 	"path/filepath"
 )
 
-func ParseClientConfig(filePath string) (
+func ParseClientConfig(fileContent string) (
 	cfg ClientCommonConf,
 	pxyCfgs map[string]ProxyConf,
 	visitorCfgs map[string]VisitorConf,
 	err error,
 ) {
 	var content []byte
-	content, err = GetRenderedConfFromFile(filePath)
-	if err != nil {
-		return
-	}
+	content = []byte(fileContent)
+
 	configBuffer := bytes.NewBuffer(nil)
 	configBuffer.Write(content)
 

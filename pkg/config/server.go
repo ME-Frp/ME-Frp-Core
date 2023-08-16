@@ -125,7 +125,7 @@ type ServerCommonConf struct {
 	// debug info) to frpc. By default, this value is true.
 	DetailedErrorsToClient bool `ini:"detailed_errors_to_client" json:"detailed_errors_to_client"`
 
-	// SubDomainHost specifies the domain that will be attached to sub-domains
+	// SubDomainHost specifies the domain that will be attached to subdomains
 	// requested by the client when using Vhost proxying. For example, if this
 	// value is set to "frps.com" and the client requested the subdomain
 	// "test", the resulting URL would be "test.frps.com". By default, this
@@ -192,6 +192,12 @@ type ServerCommonConf struct {
 	// Enable golang pprof handlers in dashboard listener.
 	// Dashboard port must be set first.
 	PprofEnable bool `ini:"pprof_enable" json:"pprof_enable"`
+	// Enable API Service
+	EnableApi bool `json:"api_enable"`
+	// GET API BaseUrl
+	ApiBaseUrl string `json:"api_baseurl"`
+	// Get API Token
+	ApiToken string `json:"api_token"`
 	// NatHoleAnalysisDataReserveHours specifies the hours to reserve nat hole analysis data.
 	NatHoleAnalysisDataReserveHours int64 `ini:"nat_hole_analysis_data_reserve_hours" json:"nat_hole_analysis_data_reserve_hours"`
 }
@@ -223,6 +229,9 @@ func GetDefaultServerConf() ServerCommonConf {
 		UserConnTimeout:                 10,
 		HTTPPlugins:                     make(map[string]plugin.HTTPPluginOptions),
 		UDPPacketSize:                   1500,
+		EnableApi:                       false,
+		ApiBaseUrl:                      "",
+		ApiToken:                        "",
 		NatHoleAnalysisDataReserveHours: 7 * 24,
 	}
 }
@@ -261,6 +270,27 @@ func UnmarshalServerConfFromIni(source interface{}) (ServerCommonConf, error) {
 			common.AllowPorts[int(port)] = struct{}{}
 		}
 		common.AllowPortsStr = allowPortStr
+	}
+
+	var (
+		tmpStr string
+	)
+
+	tmpStr = s.Key("api_enable").String()
+	if tmpStr == "false" {
+		common.EnableApi = false
+	} else {
+		common.EnableApi = true
+	}
+
+	tmpStr = s.Key("api_baseurl").String()
+	if tmpStr == s.Key("api_baseurl").String() {
+		common.ApiBaseUrl = tmpStr
+	}
+
+	tmpStr = s.Key("api_token").String()
+	if tmpStr == s.Key("api_token").String() {
+		common.ApiToken = tmpStr
 	}
 
 	// plugin.xxx

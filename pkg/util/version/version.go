@@ -19,7 +19,7 @@ import (
 	"strings"
 )
 
-var version = "0.51.3"
+var version = "MirrorEdgeFrp_0.51.3"
 
 func Full() string {
 	return version

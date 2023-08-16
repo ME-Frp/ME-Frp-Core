@@ -1,22 +1,10 @@
-// Copyright 2017 fatedier, fatedier@gmail.com
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package server
 
 import (
 	"context"
 	"fmt"
+	"github.com/fatedier/frp/pkg/api"
+	"github.com/fatedier/frp/pkg/limit"
 	"io"
 	"net"
 	"runtime/debug"
@@ -67,7 +55,7 @@ func (cm *ControlManager) Add(runID string, ctl *Control) (old *Control) {
 	return
 }
 
-// we should make sure if it's the same control to prevent delete a new one
+// Del we should make sure if it's the same control to prevent delete a new one
 func (cm *ControlManager) Del(runID string, ctl *Control) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -87,7 +75,10 @@ func (cm *ControlManager) Close() error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	for _, ctl := range cm.ctlsByRunID {
-		ctl.Close()
+		err := ctl.Close()
+		if err != nil {
+			return err
+		}
 	}
 	cm.ctlsByRunID = make(map[string]*Control)
 	return nil
@@ -116,10 +107,10 @@ type Control struct {
 	conn net.Conn
 
 	// put a message in this channel to send it over control connection to client
-	sendCh chan (msg.Message)
+	sendCh chan msg.Message
 
 	// read from this channel to get the next message sent by client
-	readCh chan (msg.Message)
+	readCh chan msg.Message
 
 	// work connections
 	workConnCh chan net.Conn
@@ -153,8 +144,10 @@ type Control struct {
 	// Server configuration information
 	serverCfg config.ServerCommonConf
 
-	xl  *xlog.Logger
-	ctx context.Context
+	xl       *xlog.Logger
+	ctx      context.Context
+	inLimit  uint64
+	outLimit uint64
 }
 
 func NewControl(
@@ -166,6 +159,8 @@ func NewControl(
 	ctlConn net.Conn,
 	loginMsg *msg.Login,
 	serverCfg config.ServerCommonConf,
+	inLimit uint64,
+	outLimit uint64,
 ) *Control {
 	poolCount := loginMsg.PoolCount
 	if poolCount > int(serverCfg.MaxPoolCount) {
@@ -193,6 +188,10 @@ func NewControl(
 		serverCfg:       serverCfg,
 		xl:              xlog.FromContextSafe(ctx),
 		ctx:             ctx,
+		//rate.NewLimiter(rate.Limit(inLimit*limit.KB), int(inLimit*limit.KB)),
+		inLimit: inLimit,
+		//rate.NewLimiter(rate.Limit(outLimit*limit.KB), int(outLimit*limit.KB)),
+		outLimit: outLimit,
 	}
 	ctl.msgTransporter = transport.NewMessageTransporter(ctl.sendCh)
 	return ctl
@@ -256,7 +255,7 @@ func (ctl *Control) RegisterWorkConn(conn net.Conn) error {
 	}
 }
 
-// When frps get one user connection, we get one work connection from the pool and return it.
+// GetWorkConn When frps get one user connection, we get one work connection from the pool and return it.
 // If no workConn available in the pool, send message to frpc to get one or more
 // and wait until it is available.
 // return an error if wait timeout
@@ -361,7 +360,10 @@ func (ctl *Control) reader() {
 				return
 			}
 			xl.Warn("read error: %v", err)
-			ctl.conn.Close()
+			err := ctl.conn.Close()
+			if err != nil {
+				return
+			}
 			return
 		}
 
@@ -380,7 +382,10 @@ func (ctl *Control) stoper() {
 
 	ctl.allShutdown.WaitStart()
 
-	ctl.conn.Close()
+	err := ctl.conn.Close()
+	if err != nil {
+		return
+	}
 	ctl.readerShutdown.WaitDone()
 
 	close(ctl.readCh)
@@ -394,7 +399,10 @@ func (ctl *Control) stoper() {
 
 	close(ctl.workConnCh)
 	for workConn := range ctl.workConnCh {
-		workConn.Close()
+		err := workConn.Close()
+		if err != nil {
+			return
+		}
 	}
 
 	for _, pxy := range ctl.proxies {
@@ -422,7 +430,7 @@ func (ctl *Control) stoper() {
 	metrics.Server.CloseClient()
 }
 
-// block until Control closed
+// WaitClosed block until Control closed
 func (ctl *Control) WaitClosed() {
 	ctl.mu.RLock()
 	started := ctl.started
@@ -449,7 +457,7 @@ func (ctl *Control) manager() {
 
 	var heartbeatCh <-chan time.Time
 	// Don't need application heartbeat if TCPMux is enabled,
-	// yamux will do same thing.
+	// yam will do same thing.
 	if !ctl.serverCfg.TCPMux && ctl.serverCfg.HeartbeatTimeout > 0 {
 		heartbeat := time.NewTicker(time.Second)
 		defer heartbeat.Stop()
@@ -482,7 +490,7 @@ func (ctl *Control) manager() {
 				retContent, err := ctl.pluginManager.NewProxy(content)
 				if err == nil {
 					m = &retContent.NewProxy
-					remoteAddr, err = ctl.RegisterProxy(m)
+					remoteAddr, err = ctl.RegisterProxy(m, ctl.loginMsg)
 				}
 
 				// register proxy in this control
@@ -548,12 +556,43 @@ func (ctl *Control) HandleNatHoleReport(m *msg.NatHoleReport) {
 	ctl.rc.NatHoleController.HandleReport(m)
 }
 
-func (ctl *Control) RegisterProxy(pxyMsg *msg.NewProxy) (remoteAddr string, err error) {
+func (ctl *Control) RegisterProxy(pxyMsg *msg.NewProxy, LoginMsg *msg.Login) (remoteAddr string, err error) {
 	var pxyConf config.ProxyConf
+
+	s, err := api.NewService(ctl.serverCfg.ApiBaseUrl)
+
+	var workConn proxy.GetWorkConnFn = ctl.GetWorkConn
+
+	if err != nil {
+		return remoteAddr, err
+	}
+
+	if ctl.serverCfg.EnableApi {
+
+		nowTime := time.Now().Unix()
+		ok, err := s.CheckProxy(ctl.loginMsg.User, pxyMsg, nowTime, ctl.serverCfg.ApiToken, LoginMsg)
+
+		if err != nil {
+			return remoteAddr, err
+		}
+
+		if !ok {
+			return remoteAddr, fmt.Errorf("invalid proxy configuration")
+		}
+
+		workConn = func() (net.Conn, error) {
+			fconn, err := ctl.GetWorkConn()
+			if err != nil {
+				return nil, err
+			}
+			ctl.xl.Debug("client speed limit: %dKB/s (Inbound) / %dKB/s (Outbound)", ctl.inLimit, ctl.outLimit)
+			return limit.NewLimitConn(ctl.inLimit, ctl.outLimit, fconn), nil
+		}
+	}
 	// Load configures from NewProxy message and validate.
 	pxyConf, err = config.NewProxyConfFromMsg(pxyMsg, ctl.serverCfg)
 	if err != nil {
-		return
+		return remoteAddr, err
 	}
 
 	// User info
@@ -565,7 +604,7 @@ func (ctl *Control) RegisterProxy(pxyMsg *msg.NewProxy) (remoteAddr string, err 
 
 	// NewProxy will return an interface Proxy.
 	// In fact, it creates different proxies based on the proxy type. We just call run() here.
-	pxy, err := proxy.NewProxy(ctl.ctx, userInfo, ctl.rc, ctl.poolCount, ctl.GetWorkConn, pxyConf, ctl.serverCfg, ctl.loginMsg)
+	pxy, err := proxy.NewProxy(ctl.ctx, userInfo, ctl.rc, ctl.poolCount, workConn, pxyConf, ctl.serverCfg, ctl.loginMsg)
 	if err != nil {
 		return remoteAddr, err
 	}
