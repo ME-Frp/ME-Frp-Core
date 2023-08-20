@@ -21,7 +21,7 @@ import (
 	"time"
 
 	fmux "github.com/hashicorp/yamux"
-	"github.com/quic-go/quic-go"
+	quic "github.com/quic-go/quic-go"
 
 	"github.com/fatedier/frp/pkg/config"
 	"github.com/fatedier/frp/pkg/msg"

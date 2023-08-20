@@ -58,6 +58,8 @@ func NewVisitor(
 		ctx:        xlog.NewContext(ctx, xl),
 		internalLn: utilnet.NewInternalListener(),
 	}
+	//nolint:unused
+	_ = baseVisitor
 	switch cfg := cfg.(type) {
 	case *config.STCPVisitorConf:
 		visitor = &STCPVisitor{

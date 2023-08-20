@@ -24,6 +24,7 @@ _testmain.go
 *.prof
 
 # Self
+golangci-lint-1.54.1-windows-amd64/
 bin/
 packages/
 release/

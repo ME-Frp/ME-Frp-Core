@@ -179,28 +179,55 @@ type wrapQuicStream struct {
 	c quic.Connection
 }
 
+func (w *wrapQuicStream) Read(b []byte) (n int, err error) {
+	return w.Stream.Read(b)
+}
+
+func (w *wrapQuicStream) LocalAddr() net.Addr {
+	if w.c != nil {
+		return w.c.LocalAddr()
+	}
+	return (*net.TCPAddr)(nil)
+}
+
+func (w *wrapQuicStream) RemoteAddr() net.Addr {
+	if w.c != nil {
+		return w.c.RemoteAddr()
+	}
+	return (*net.TCPAddr)(nil)
+}
+
+func (w *wrapQuicStream) Close() error {
+	w.Stream.CancelRead(0)
+	return w.Stream.Close()
+}
+func (w *wrapQuicStream) SetDeadline(t time.Time) error {
+	if w.c != nil {
+		return w.Stream.SetDeadline(t)
+	}
+	return nil
+}
+
+func (w *wrapQuicStream) SetReadDeadline(t time.Time) error {
+	if w.c != nil {
+		return w.Stream.SetReadDeadline(t)
+	}
+	return nil
+}
+
+func (w *wrapQuicStream) SetWriteDeadline(t time.Time) error {
+	if w.c != nil {
+		return w.Stream.SetWriteDeadline(t)
+	}
+	return nil
+}
+func (w *wrapQuicStream) Write(b []byte) (n int, err error) {
+	return w.Stream.Write(b)
+}
+
 func QuicStreamToNetConn(s quic.Stream, c quic.Connection) net.Conn {
 	return &wrapQuicStream{
 		Stream: s,
 		c:      c,
 	}
-}
-
-func (conn *wrapQuicStream) LocalAddr() net.Addr {
-	if conn.c != nil {
-		return conn.c.LocalAddr()
-	}
-	return (*net.TCPAddr)(nil)
-}
-
-func (conn *wrapQuicStream) RemoteAddr() net.Addr {
-	if conn.c != nil {
-		return conn.c.RemoteAddr()
-	}
-	return (*net.TCPAddr)(nil)
-}
-
-func (conn *wrapQuicStream) Close() error {
-	conn.Stream.CancelRead(0)
-	return conn.Stream.Close()
 }

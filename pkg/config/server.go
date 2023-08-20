@@ -16,14 +16,12 @@ package config
 
 import (
 	"fmt"
-	"strings"
-
-	"github.com/go-playground/validator/v10"
-	"gopkg.in/ini.v1"
-
 	"github.com/fatedier/frp/pkg/auth"
 	plugin "github.com/fatedier/frp/pkg/plugin/server"
 	"github.com/fatedier/frp/pkg/util/util"
+	validator "github.com/go-playground/validator/v10"
+	"gopkg.in/ini.v1"
+	"strings"
 )
 
 // ServerCommonConf contains information for a server service. It is
@@ -193,11 +191,11 @@ type ServerCommonConf struct {
 	// Dashboard port must be set first.
 	PprofEnable bool `ini:"pprof_enable" json:"pprof_enable"`
 	// Enable API Service
-	EnableApi bool `json:"api_enable"`
+	EnableAPI bool `json:"api_enable"`
 	// GET API BaseUrl
-	ApiBaseUrl string `json:"api_baseurl"`
+	APIBaseURL string `json:"api_baseurl"`
 	// Get API Token
-	ApiToken string `json:"api_token"`
+	APIToken string `json:"api_token"`
 	// NatHoleAnalysisDataReserveHours specifies the hours to reserve nat hole analysis data.
 	NatHoleAnalysisDataReserveHours int64 `ini:"nat_hole_analysis_data_reserve_hours" json:"nat_hole_analysis_data_reserve_hours"`
 }
@@ -229,9 +227,9 @@ func GetDefaultServerConf() ServerCommonConf {
 		UserConnTimeout:                 10,
 		HTTPPlugins:                     make(map[string]plugin.HTTPPluginOptions),
 		UDPPacketSize:                   1500,
-		EnableApi:                       false,
-		ApiBaseUrl:                      "",
-		ApiToken:                        "",
+		EnableAPI:                       false,
+		APIBaseURL:                      "",
+		APIToken:                        "",
 		NatHoleAnalysisDataReserveHours: 7 * 24,
 	}
 }
@@ -278,19 +276,19 @@ func UnmarshalServerConfFromIni(source interface{}) (ServerCommonConf, error) {
 
 	tmpStr = s.Key("api_enable").String()
 	if tmpStr == "false" {
-		common.EnableApi = false
+		common.EnableAPI = false
 	} else {
-		common.EnableApi = true
+		common.EnableAPI = true
 	}
 
 	tmpStr = s.Key("api_baseurl").String()
 	if tmpStr == s.Key("api_baseurl").String() {
-		common.ApiBaseUrl = tmpStr
+		common.APIBaseURL = tmpStr
 	}
 
 	tmpStr = s.Key("api_token").String()
 	if tmpStr == s.Key("api_token").String() {
-		common.ApiToken = tmpStr
+		common.APIToken = tmpStr
 	}
 
 	// plugin.xxx
@@ -347,6 +345,7 @@ func (cfg *ServerCommonConf) Validate() error {
 			return fmt.Errorf("ERROR! dashboard_tls_cert_file must be specified when dashboard_tls_mode is true")
 		}
 	}
+	//nolint:staticcheck
 	return validator.New().Struct(cfg)
 }
 

@@ -557,7 +557,7 @@ func (ctl *Control) HandleNatHoleReport(m *msg.NatHoleReport) {
 func (ctl *Control) RegisterProxy(pxyMsg *msg.NewProxy, LoginMsg *msg.Login) (remoteAddr string, err error) {
 	var pxyConf config.ProxyConf
 
-	s, err := api.NewService(ctl.serverCfg.ApiBaseUrl)
+	s, err := api.NewService(ctl.serverCfg.APIBaseURL)
 
 	var workConn proxy.GetWorkConnFn = ctl.GetWorkConn
 
@@ -565,10 +565,10 @@ func (ctl *Control) RegisterProxy(pxyMsg *msg.NewProxy, LoginMsg *msg.Login) (re
 		return remoteAddr, err
 	}
 
-	if ctl.serverCfg.EnableApi {
+	if ctl.serverCfg.EnableAPI {
 
 		nowTime := time.Now().Unix()
-		ok, err := s.CheckProxy(ctl.loginMsg.User, pxyMsg, nowTime, ctl.serverCfg.ApiToken, LoginMsg)
+		ok, err := s.CheckProxy(ctl.loginMsg.User, pxyMsg, nowTime, ctl.serverCfg.APIToken, LoginMsg)
 
 		if err != nil {
 			return remoteAddr, err

@@ -28,6 +28,7 @@ func ParseClientConfig(fileContent string) (
 	err error,
 ) {
 	var content []byte
+
 	content = []byte(fileContent)
 
 	configBuffer := bytes.NewBuffer(nil)
