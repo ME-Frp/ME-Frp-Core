@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  goreleaser:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,7 +27,7 @@ jobs:
       - name: List Files
         id: list_files
         run: |
-          echo "::set-output name=files::$(ls ./packages/*)"
+          echo "::set-output name=files::$(ls ./packages/)"
 
       - name: Upload Files
         run: |
