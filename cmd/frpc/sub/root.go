@@ -74,7 +74,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&cfgDir, "config_dir", "", "", "config directory, run one frpc service for each file in config directory")
 	rootCmd.PersistentFlags().BoolVarP(&showVersion, "version", "v", false, "version of frpc")
 	rootCmd.PersistentFlags().StringVarP(&userToken, "token", "t", "", "You User Token")
-	rootCmd.PersistentFlags().StringVarP(&tunnelId, "tunnelId", "n", "", "Tunnel's ID")
+	rootCmd.PersistentFlags().StringVarP(&tunnelId, "tunnelId", "i", "", "Tunnel's ID")
 }
 
 func RegisterCommonFlags(cmd *cobra.Command) {
