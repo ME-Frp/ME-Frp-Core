@@ -21,10 +21,7 @@ jobs:
         run: |
           ./package.sh
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v4
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v1
         with:
-          version: latest
-          args: release --clean --release-notes=./Release.md
-        env:
-          GITHUB_TOKEN: ${{ secrets.GPR_TOKEN }}
+          path: ./release
