@@ -23,20 +23,4 @@ jobs:
       - name: Make All
         run: |
           ./package.sh
-          
-      - name: List Files
-        id: list_files
-        run: |
-          echo "::set-output name=files::$(ls ./release/packages/)"
 
-      - name: Upload Files
-        run: |
-          for file in ${{ steps.list_files.outputs.files }}; do
-            name=$(basename "$file")
-            echo "Uploading $name..."
-            echo "::set-output name=upload_step::$file"
-            uses: actions/upload-artifact@v2
-            with:
-              name: $name
-              path: $file
-          done
