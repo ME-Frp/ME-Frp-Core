@@ -24,7 +24,13 @@ jobs:
         run: |
           ./package.sh
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v1
+      - name: List release files
+        run: |
+          ls ./release
+        id: list_files
+          
+      - name: Upload files
+        uses: actions/upload-artifact@v2
         with:
-          path: ./release
+          name: Release Files
+          path: ${{ steps.list_files.outputs.stdout }}
