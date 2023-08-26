@@ -1,6 +1,9 @@
-name: goreleaser
+name: Golang Build Check
 
 on:
+  # Runs on pushes targeting the default branch
+  push:
+    branches: ["dev"]
   workflow_dispatch:
 
 jobs:
