@@ -27,7 +27,7 @@ jobs:
       - name: List Files
         id: list_files
         run: |
-          echo "::set-output name=files::$(ls ./packages/)"
+          echo "::set-output name=files::$(ls ./release/packages/)"
 
       - name: Upload Files
         run: |
