@@ -91,7 +91,7 @@ func RegisterCommonFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVarP(&dnsServer, "dns_server", "", "", "specify dns server instead of using system default one")
 }
 func EasyStartGetConf(token string, tunnelId string) {
-	req, err := http.NewRequest("GET", "https://frp.api.mcserverx.com/api/v2/tunnel/conf/id/"+tunnelId, nil)
+	req, err := http.NewRequest("GET", "https://api.mefrp.com/api/v2/tunnel/conf/id/"+tunnelId, nil)
 	if err != nil {
 		fmt.Println(err)
 		return
