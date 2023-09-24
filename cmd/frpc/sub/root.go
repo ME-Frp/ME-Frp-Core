@@ -129,7 +129,7 @@ func GetEndPoint(token string) (string, string, error) {
 
 	// 发起 LoCyanFrp 请求
 	g.Go(func() error {
-		req, err := http.NewRequestWithContext(ctx, "GET", "https://api."+token, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", "https://api-v2.locyanfrp.cn/api/v2/check/token?token="+token, nil)
 		if err != nil {
 			return err
 		}
@@ -147,7 +147,7 @@ func GetEndPoint(token string) (string, string, error) {
 		}(response.Body)
 
 		if response.StatusCode == http.StatusOK {
-			endpoint = "https://api."
+			endpoint = "https://api-v2.locyanfrp.cn/api/v2/config/get?id="
 			service = "LoCyanFrp"
 			fmt.Println("欢迎使用 LoCyanFrp！")
 		}
