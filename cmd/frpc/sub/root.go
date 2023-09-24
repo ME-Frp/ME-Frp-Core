@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/fatedier/frp/client"
 	"github.com/fatedier/frp/pkg/auth"
@@ -90,8 +91,86 @@ func RegisterCommonFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVarP(&tlsServerName, "tls_server_name", "", "", "specify the custom server name of tls certificate")
 	cmd.PersistentFlags().StringVarP(&dnsServer, "dns_server", "", "", "specify dns server instead of using system default one")
 }
+
+func GetEndPoint(token string) (string, string, error) {
+	var endpoint string
+	var service string
+
+	g, ctx := errgroup.WithContext(context.Background())
+
+	// 发起 ME Frp 请求
+	g.Go(func() error {
+		req, err := http.NewRequestWithContext(ctx, "GET", "https://api.mefrp.com/api/v2/user", nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		c := &http.Client{}
+		response, err := c.Do(req)
+		if err != nil {
+			return err
+		}
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+				fmt.Println("无法访问 ME Frp API！ 如果您使用的是 LoCyanFrp , 请忽略此条提示。")
+			}
+		}(response.Body)
+
+		if response.StatusCode == http.StatusOK {
+			endpoint = "https://api.mefrp.com/api/v2/tunnel/conf/id/"
+			fmt.Println("欢迎使用 MEFrp！")
+			service = "ME Frp"
+		}
+
+		return nil
+	})
+
+	// 发起 LoCyanFrp 请求
+	g.Go(func() error {
+		req, err := http.NewRequestWithContext(ctx, "GET", "https://api."+token, nil)
+		if err != nil {
+			return err
+		}
+
+		c := &http.Client{}
+		response, err := c.Do(req)
+		if err != nil {
+			return err
+		}
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+				fmt.Println("无法访问 LoCyanFrp API！ 如果您使用的是 ME Frp , 请忽略此条提示。")
+			}
+		}(response.Body)
+
+		if response.StatusCode == http.StatusOK {
+			endpoint = "https://api."
+			service = "LoCyanFrp"
+			fmt.Println("欢迎使用 LoCyanFrp！")
+		}
+
+		return nil
+	})
+
+	err := g.Wait()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	if endpoint == "" {
+		fmt.Println("令牌错误")
+		os.Exit(1)
+	}
+
+	return endpoint, service, nil
+}
 func EasyStartGetConf(token string, tunnelId string) {
-	req, err := http.NewRequest("GET", "https://api.mefrp.com/api/v2/tunnel/conf/id/"+tunnelId, nil)
+	endpoint, service, _ := GetEndPoint(token)
+	req, err := http.NewRequest("GET", endpoint+tunnelId, nil)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -107,7 +186,7 @@ func EasyStartGetConf(token string, tunnelId string) {
 		return
 	}
 	if response.StatusCode != http.StatusOK {
-		err = fmt.Errorf("ME Frp API 错误 可能是您的启动信息错误%d", response.StatusCode)
+		err = fmt.Errorf(service+"API 错误 可能是您的启动信息错误%d", response.StatusCode)
 		fmt.Println(err)
 		os.Exit(1)
 		return
@@ -132,7 +211,7 @@ func EasyStartGetConf(token string, tunnelId string) {
 
 var rootCmd = &cobra.Command{
 	Use:   "frpc",
-	Short: "The Frp Client of ME Frp",
+	Short: "The Frp Client of ME Frp or LoCyan Frp",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if showVersion {
 			fmt.Println(version.Full())
