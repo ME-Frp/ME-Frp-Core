@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -107,7 +108,13 @@ func EasyStartGetConf(token string, tunnelId string) {
 		return
 	}
 	if response.StatusCode != http.StatusOK {
-		err = fmt.Errorf("ME Frp API 错误 可能是您的启动信息错误%d", response.StatusCode)
+		err = fmt.Errorf("ME Frp API 校验失败 可能是您的启动信息错误%d", response.StatusCode)
+		bodyBytes, err := ioutil.ReadAll(response.Body)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		fmt.Println(string(bodyBytes))
 		fmt.Println(err)
 		os.Exit(1)
 		return
@@ -157,13 +164,14 @@ var rootCmd = &cobra.Command{
 		// 如果 tunnelId 后面跟了多个数字，那么就是多个隧道
 		if strings.Contains(tunnelId, ",") {
 			fmt.Println("检测到多个隧道，正在启动多个隧道")
+			fmt.Printf(tunnelId)
 			_ = runMultipleClientsEasyStart(userToken, tunnelId)
-		}
-
-		// 多隧道不行就单隧道
-		err := runClient(cfgFile, userToken, tunnelId)
-		if err != nil {
-			os.Exit(1)
+		} else {
+			// 多隧道不行就单隧道
+			err := runClient(cfgFile, userToken, tunnelId)
+			if err != nil {
+				os.Exit(1)
+			}
 		}
 		return nil
 	},
@@ -197,16 +205,15 @@ func runMultipleClientsEasyStart(userToken string, tunnelId string) error {
 	tunnelIdList := strings.Split(tunnelId, ",")
 	for _, tunnelId := range tunnelIdList {
 		wg.Add(1)
-		time.Sleep(time.Millisecond)
-		go func() {
+		go func(tunnelId string) {
 			defer wg.Done()
 			err := runClient("", userToken, tunnelId)
 			if err != nil {
 				fmt.Printf("frpc service error for config file [%s]\n", tunnelId)
 			}
-		}()
-		return nil
+		}(tunnelId)
 	}
+
 	wg.Wait()
 	return nil
 }

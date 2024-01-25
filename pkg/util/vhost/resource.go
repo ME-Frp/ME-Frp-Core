@@ -15,8 +15,6 @@
 package vhost
 
 import (
-	"bytes"
-	"io"
 	"net/http"
 	"os"
 
@@ -68,20 +66,17 @@ func getNotFoundPageContent() []byte {
 }
 
 func notFoundResponse() *http.Response {
+	targetUrl := "https://www.mefrp.com/ServiceNotFound"
 	header := make(http.Header)
-	header.Set("server", "frp/"+version.Full())
-	header.Set("Content-Type", "text/html")
+	header.Set("server", "ME-Frp/"+version.Full())
+	header.Set("Location", targetUrl)
 
-	content := getNotFoundPageContent()
 	res := &http.Response{
-		Status:        "Not Found",
-		StatusCode:    404,
-		Proto:         "HTTP/1.1",
-		ProtoMajor:    1,
-		ProtoMinor:    1,
-		Header:        header,
-		Body:          io.NopCloser(bytes.NewReader(content)),
-		ContentLength: int64(len(content)),
+		Proto:      "HTTP/1.1",
+		Status:     "Found",
+		StatusCode: 302,
+		Header:     header,
 	}
 	return res
+
 }
