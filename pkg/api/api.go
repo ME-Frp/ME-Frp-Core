@@ -36,6 +36,7 @@ func (s Service) CheckToken(user string, token string, timestamp int64, stk stri
 		u.RawQuery = ""
 	}(&s.Host)
 	resp, err := http.Get(s.Host.String())
+	err := Body.Close()
 	if err != nil {
 		return false, err
 	}
@@ -46,7 +47,6 @@ func (s Service) CheckToken(user string, token string, timestamp int64, stk stri
 		}
 	}
 	defer func(Body io.ReadCloser) {
-		err := Body.Close()
 		if err != nil {
 			fmt.Println(err)
 		}
