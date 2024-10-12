@@ -31,11 +31,17 @@ func (s Service) CheckToken(user string, token string, timestamp int64, stk stri
 	values.Set("token", token)
 	values.Set("timestamp", fmt.Sprintf("%d", timestamp))
 	values.Set("apitoken", stk)
+
 	s.Host.RawQuery = values.Encode()
 	defer func(u *url.URL) {
 		u.RawQuery = ""
 	}(&s.Host)
+
 	resp, err := http.Get(s.Host.String())
+	if resp == nil {
+		return false, err
+	}
+	defer resp.Body.Close()
 	if err != nil {
 		return false, err
 	}
@@ -45,12 +51,6 @@ func (s Service) CheckToken(user string, token string, timestamp int64, stk stri
 			Text:   resp.Status,
 		}
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			fmt.Println(err)
-		}
-	}(resp.Body)
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return false, err
@@ -109,6 +109,10 @@ func (s Service) CheckProxy(user string, pMsg *msg.NewProxy, timestamp int64, st
 		u.RawQuery = ""
 	}(&s.Host)
 	resp, err := http.Get(s.Host.String())
+	if resp == nil {
+		return false, err
+	}
+	defer resp.Body.Close()
 	if err != nil {
 		return false, err
 	}
@@ -118,12 +122,7 @@ func (s Service) CheckProxy(user string, pMsg *msg.NewProxy, timestamp int64, st
 			Text:   resp.Status,
 		}
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			fmt.Println(err)
-		}
-	}(resp.Body)
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return false, err
@@ -150,15 +149,14 @@ func (s Service) GetProxyLimit(user string, timestamp int64, stk string) (inLimi
 		u.RawQuery = ""
 	}(&s.Host)
 	resp, err := http.Get(s.Host.String())
+	defer resp.Body.Close()
+	if resp == nil {
+		return 0, 0, err
+	}
 	if err != nil {
 		return 0, 0, err
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			fmt.Println(err)
-		}
-	}(resp.Body)
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return 0, 0, err
@@ -179,14 +177,6 @@ func (s Service) GetProxyLimit(user string, timestamp int64, stk string) (inLimi
 
 	// 这里直接返回 uint64 应该问题不大
 	return response.MaxIn, response.MaxOut, nil
-}
-
-func BoolToString(val bool) (str string) {
-	if val {
-		return "true"
-	}
-	return "false"
-
 }
 
 type ErrHTTPStatus struct {
